@@ -342,11 +342,10 @@ impl Encoder {
                 (*self.context).mb_decision = 2;
             }
 
-            /*
-            if (*fmt).flags & ffmpeg_sys::AVFMT_GLOBALHEADER != 0 {
-                (*self.context).flags = (*self.context).flags | CODEC_FLAG_GLOBAL_HEADER;
+            // Some formats want stream headers to be separate.
+            if (*fmt).flags & ffmpeg_sys::AVFMT_GLOBALHEADER > 0 {
+                (*self.context).flags |= ffmpeg_sys::AV_CODEC_FLAG_GLOBAL_HEADER as i32;
             }
-            */
 
             // Open the codec.
             if ffmpeg_sys::avcodec_open2(self.context, codec, ptr::null_mut()) < 0 {
