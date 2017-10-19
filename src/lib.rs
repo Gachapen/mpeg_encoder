@@ -364,22 +364,7 @@ impl Encoder {
             (*self.frame).format = (*self.context).pix_fmt as i32;
             (*self.frame).width  = (*self.context).width;
             (*self.frame).height = (*self.context).height;
-            (*self.frame).pts    = 0;
-
-            // alloc the buffer
-            let nframe_bytes = ffmpeg_sys::avpicture_get_size(self.pix_fmt,
-                                                              self.target_width as i32,
-                                                              self.target_height as i32);
-
-            let reps = iter::repeat(0u8).take(nframe_bytes as usize);
-            self.frame_buf = Vec::<u8>::from_iter(reps);
-            //self.frame_buf = Vec::from_elem(nframe_bytes as usize, 0u8);
-
-            let _ = ffmpeg_sys::avpicture_fill(self.frame as *mut AVPicture,
-                                               self.frame_buf.get(0).unwrap(),
-                                               self.pix_fmt,
-                                               self.target_width as i32,
-                                               self.target_height as i32);
+            (*self.frame).pts = 0;
 
             /*
              * Init the temporary video frame.
@@ -410,6 +395,25 @@ impl Encoder {
             if ffmpeg_sys::avformat_write_header(self.format_context, ptr::null_mut()) < 0 {
                 panic!("Failed to open the output file.");
             }
+
+            // alloc the buffer
+            let nframe_bytes = ffmpeg_sys::avpicture_get_size(
+                self.pix_fmt,
+                self.target_width as i32,
+                self.target_height as i32,
+            );
+
+            let reps = iter::repeat(0u8).take(nframe_bytes as usize);
+            self.frame_buf = Vec::<u8>::from_iter(reps);
+            //self.frame_buf = Vec::from_elem(nframe_bytes as usize, 0u8);
+
+            let _ = ffmpeg_sys::avpicture_fill(
+                self.frame as *mut AVPicture,
+                &self.frame_buf[0],
+                self.pix_fmt,
+                self.target_width as i32,
+                self.target_height as i32,
+            );
 
             if ret < 0 {
                 panic!("Could not allocate raw picture buffer");
