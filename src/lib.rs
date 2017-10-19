@@ -12,8 +12,8 @@ extern crate ffmpeg_sys;
 
 // Inspired by the muxing sample: http://ffmpeg.org/doxygen/trunk/muxing_8c-source.html
 
-use ffmpeg_sys::{SwsContext, AVCodec, AVCodecContext, AVPacket, AVFormatContext, AVStream,
-                 AVFrame, AVRational, AVPixelFormat, AVPicture, AVCodecID};
+use ffmpeg_sys::{AVCodec, AVCodecContext, AVCodecID, AVFormatContext, AVFrame, AVPacket,
+                 AVPacketSideDataType, AVPicture, AVPixelFormat, AVRational, AVStream, SwsContext};
 use std::ptr;
 use std::mem;
 use std::iter;
@@ -305,6 +305,20 @@ impl Encoder {
             }
 
             (*self.video_st).id = ((*self.format_context).nb_streams - 1) as i32;
+
+            // Set larger VBV buffer size to fix warning and underflows.
+            let mut cpb_properties_size: usize = mem::uninitialized();
+            let cpb_properties = ffmpeg_sys::av_cpb_properties_alloc(&mut cpb_properties_size);
+            (*cpb_properties).buffer_size = 512 * 1024;
+            if ffmpeg_sys::av_stream_add_side_data(
+                self.video_st,
+                AVPacketSideDataType::AV_PKT_DATA_CPB_PROPERTIES,
+                cpb_properties as *mut u8,
+                cpb_properties_size,
+            ) < 0
+            {
+                panic!("Failed to set stream side data.");
+            }
 
             self.context = ffmpeg_sys::avcodec_alloc_context3(codec);
 
