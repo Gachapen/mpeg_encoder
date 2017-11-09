@@ -30,12 +30,12 @@ pub struct Encoder {
     frame_buf: Vec<u8>,
     curr_frame_index: usize,
     initialized: bool,
-    bit_rate: usize,
+    bit_rate: Option<usize>,
     target_width: usize,
     target_height: usize,
     time_base: (usize, usize),
-    gop_size: usize,
-    max_b_frames: usize,
+    gop_size: Option<usize>,
+    max_b_frames: Option<usize>,
     pix_fmt: AVPixelFormat,
     tmp_frame: *mut AVFrame,
     frame: *mut AVFrame,
@@ -84,10 +84,7 @@ impl Encoder {
             });
         }
 
-        let bit_rate = bit_rate.unwrap_or(40_0000); // FIXME
         let time_base = time_base.unwrap_or((1, 60));
-        let gop_size = gop_size.unwrap_or(10);
-        let max_b_frames = max_b_frames.unwrap_or(1);
         let pix_fmt = pix_fmt.unwrap_or(AVPixelFormat::AV_PIX_FMT_YUV420P);
         // width and height must be a multiple of two.
         let width = if width % 2 == 0 {
@@ -321,7 +318,15 @@ impl Encoder {
             (*self.context).codec_id = (*fmt).video_codec;
 
             // Put sample parameters.
-            (*self.context).bit_rate = self.bit_rate as i64;
+            if let Some(bit_rate) = self.bit_rate {
+                (*self.context).bit_rate = bit_rate as i64;
+            }
+            if let Some(gop_size) = self.gop_size {
+                (*self.context).gop_size = gop_size as i32;
+            }
+            if let Some(max_b_frames) = self.max_b_frames {
+                (*self.context).max_b_frames = max_b_frames as i32;
+            }
 
             // Resolution must be a multiple of two.
             (*self.context).width    = self.target_width  as i32;
@@ -331,8 +336,6 @@ impl Encoder {
             let (tnum, tdenum)           = self.time_base;
             (*self.context).time_base    = AVRational { num: tnum as i32, den: tdenum as i32 };
             (*self.video_st).time_base   = (*self.context).time_base;
-            (*self.context).gop_size     = self.gop_size as i32;
-            (*self.context).max_b_frames = self.max_b_frames as i32;
             (*self.context).pix_fmt      = self.pix_fmt;
 
             if (*self.context).codec_id == AVCodecID::AV_CODEC_ID_MPEG1VIDEO {
