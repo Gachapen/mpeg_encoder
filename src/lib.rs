@@ -12,8 +12,8 @@ extern crate ffmpeg_sys;
 
 // Inspired by the muxing sample: http://ffmpeg.org/doxygen/trunk/muxing_8c-source.html
 
-use ffmpeg_sys::{SwsContext, AVCodec, AVCodecContext, AVPacket, AVFormatContext, AVStream,
-                 AVFrame, AVRational, AVPixelFormat, AVPicture, AVCodecID};
+use ffmpeg_sys::{AVCodec, AVCodecContext, AVCodecID, AVDictionary, AVFormatContext, AVFrame,
+                 AVPacket, AVPicture, AVPixelFormat, AVRational, AVStream, SwsContext};
 use std::ptr;
 use std::mem;
 use std::iter;
@@ -345,6 +345,100 @@ impl Encoder {
                 (*self.context).mb_decision = 2;
             }
 
+            let mut options: *mut AVDictionary = ptr::null_mut();
+
+            // Hack to set H264 CRF.
+            if (*self.context).codec_id == AVCodecID::AV_CODEC_ID_H264 {
+                if ffmpeg_sys::av_dict_set(
+                    &mut options,
+                    CString::new("crf").unwrap().as_ptr(),
+                    CString::new("32").unwrap().as_ptr(),
+                    0,
+                ) != 0
+                {
+                    panic!("Could not set CRF option");
+                };
+
+                if ffmpeg_sys::av_dict_set(
+                    &mut options,
+                    CString::new("preset").unwrap().as_ptr(),
+                    CString::new("veryslow").unwrap().as_ptr(),
+                    0,
+                ) != 0
+                {
+                    panic!("Could not set preset option");
+                };
+            }
+
+            // Hack to set VP9 CQ.
+            if (*self.context).codec_id == AVCodecID::AV_CODEC_ID_VP9 {
+                if ffmpeg_sys::av_dict_set(
+                    &mut options,
+                    CString::new("quality").unwrap().as_ptr(),
+                    CString::new("best").unwrap().as_ptr(),
+                    0,
+                ) != 0
+                {
+                    panic!("Could not set quality option");
+                };
+
+                if ffmpeg_sys::av_dict_set(
+                    &mut options,
+                    CString::new("speed").unwrap().as_ptr(),
+                    CString::new("0").unwrap().as_ptr(),
+                    0,
+                ) != 0
+                {
+                    panic!("Could not set speed option");
+                };
+
+                if ffmpeg_sys::av_dict_set(
+                    &mut options,
+                    CString::new("crf").unwrap().as_ptr(),
+                    CString::new("32").unwrap().as_ptr(),
+                    0,
+                ) != 0
+                {
+                    panic!("Could not set CRF option");
+                };
+
+                let target_bitrate = 1400;
+                let min_bitrate = target_bitrate / 2;
+                let max_bitrate = (target_bitrate as f32 * 1.45) as u32;
+
+                if ffmpeg_sys::av_dict_set(
+                    &mut options,
+                    CString::new("b:v").unwrap().as_ptr(),
+                    CString::new(format!("{}k", target_bitrate))
+                        .unwrap()
+                        .as_ptr(),
+                    0,
+                ) != 0
+                {
+                    panic!("Could not set bitrate option");
+                };
+
+                if ffmpeg_sys::av_dict_set(
+                    &mut options,
+                    CString::new("minrate").unwrap().as_ptr(),
+                    CString::new(format!("{}k", min_bitrate)).unwrap().as_ptr(),
+                    0,
+                ) != 0
+                {
+                    panic!("Could not set minrate option");
+                };
+
+                if ffmpeg_sys::av_dict_set(
+                    &mut options,
+                    CString::new("maxrate").unwrap().as_ptr(),
+                    CString::new(format!("{}k", max_bitrate)).unwrap().as_ptr(),
+                    0,
+                ) != 0
+                {
+                    panic!("Could not set maxrate option");
+                };
+            }
+
             /*
             if (*fmt).flags & ffmpeg_sys::AVFMT_GLOBALHEADER != 0 {
                 (*self.context).flags = (*self.context).flags | CODEC_FLAG_GLOBAL_HEADER;
@@ -352,7 +446,7 @@ impl Encoder {
             */
 
             // Open the codec.
-            if ffmpeg_sys::avcodec_open2(self.context, codec, ptr::null_mut()) < 0 {
+            if ffmpeg_sys::avcodec_open2(self.context, codec, &mut options) < 0 {
                 panic!("Could not open the codec.");
             }
 
@@ -418,6 +512,8 @@ impl Encoder {
             if ret < 0 {
                 panic!("Could not allocate raw picture buffer");
             }
+
+            ffmpeg_sys::av_dict_free(&mut options);
         }
 
         self.initialized = true;
