@@ -13,7 +13,7 @@ extern crate ffmpeg_sys;
 // Inspired by the muxing sample: http://ffmpeg.org/doxygen/trunk/muxing_8c-source.html
 
 use ffmpeg_sys::{SwsContext, AVCodec, AVCodecContext, AVPacket, AVFormatContext, AVStream,
-                 AVFrame, AVRational, AVPixelFormat, AVPicture, AVCodecID};
+                 AVFrame, AVRational, AVPixelFormat, AVPicture, AVCodecID, AVDictionary};
 use std::ptr;
 use std::mem;
 use std::iter;
@@ -37,6 +37,7 @@ pub struct Encoder {
     gop_size: usize,
     max_b_frames: usize,
     pix_fmt: AVPixelFormat,
+    codec_options: Vec<(CString, Option<CString>)>,
     tmp_frame: *mut AVFrame,
     frame: *mut AVFrame,
     context: *mut AVCodecContext,
@@ -54,7 +55,7 @@ impl Encoder {
     /// * `width`  - width of the recorded video.
     /// * `height` - height of the recorded video.
     pub fn new<P: AsRef<Path>>(path: P, width: usize, height: usize) -> Encoder {
-        Encoder::new_with_params(path, width, height, None, None, None, None, None)
+        Encoder::new_with_params(path, width, height, None, None, None, None, None, Vec::new())
     }
 
     /// Creates a new video recorder with custom recording parameters.
@@ -76,7 +77,8 @@ impl Encoder {
                                            time_base: Option<(usize, usize)>,
                                            gop_size: Option<usize>,
                                            max_b_frames: Option<usize>,
-                                           pix_fmt: Option<AVPixelFormat>)
+                                           pix_fmt: Option<AVPixelFormat>,
+                                           codec_options: Vec<(String, Option<String>)>)
                                            -> Encoder {
         unsafe {
             AVFORMAT_INIT.call_once(|| {
@@ -89,6 +91,11 @@ impl Encoder {
         let gop_size = gop_size.unwrap_or(10);
         let max_b_frames = max_b_frames.unwrap_or(1);
         let pix_fmt = pix_fmt.unwrap_or(AVPixelFormat::AV_PIX_FMT_YUV420P);
+
+        let codec_options = codec_options.into_iter().map(|(name, value)| {
+            (CString::new(name).unwrap(), value.map(|v| CString::new(v).unwrap()))
+        }).collect();
+
         // width and height must be a multiple of two.
         let width = if width % 2 == 0 {
             width
@@ -114,6 +121,7 @@ impl Encoder {
             gop_size: gop_size,
             max_b_frames: max_b_frames,
             pix_fmt: pix_fmt,
+            codec_options: codec_options,
             frame: ptr::null_mut(),
             tmp_frame: ptr::null_mut(),
             context: ptr::null_mut(),
@@ -348,8 +356,22 @@ impl Encoder {
             }
             */
 
+            let mut options: *mut AVDictionary = ptr::null_mut();
+            for &(ref name, ref value) in &self.codec_options {
+                let result = ffmpeg_sys::av_dict_set(
+                    &mut options,
+                    name.as_ptr(),
+                    value.as_ref().map(|v| v.as_ptr()).unwrap_or(ptr::null()),
+                    0,
+                );
+
+                if result != 0 {
+                    panic!("Could not set codec option '{}'", name.to_str().unwrap());
+                }
+            }
+
             // Open the codec.
-            if ffmpeg_sys::avcodec_open2(self.context, codec, ptr::null_mut()) < 0 {
+            if ffmpeg_sys::avcodec_open2(self.context, codec, &mut options) < 0 {
                 panic!("Could not open the codec.");
             }
 
