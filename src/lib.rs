@@ -18,7 +18,7 @@ use std::ptr;
 use std::mem;
 use std::iter;
 use std::path::{Path, PathBuf};
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
 use std::iter::FromIterator;
 use std::sync::{Once, ONCE_INIT};
 
@@ -373,6 +373,35 @@ impl Encoder {
             // Open the codec.
             if ffmpeg_sys::avcodec_open2(self.context, codec, &mut options) < 0 {
                 panic!("Could not open the codec.");
+            }
+
+            if ffmpeg_sys::av_dict_count(options) > 0 {
+                let null_str = CString::new("").unwrap();
+                let mut entry = ffmpeg_sys::av_dict_get(
+                    options,
+                    null_str.as_ptr(),
+                    ptr::null(),
+                    ffmpeg_sys::AV_DICT_IGNORE_SUFFIX,
+                );
+
+                while !entry.is_null() {
+                    let name = CStr::from_ptr((*entry).key);
+                    let value = CStr::from_ptr((*entry).value);
+                    println!(
+                        "Error: Could not set codec option '{}' to '{}'",
+                        name.to_str().unwrap(),
+                        value.to_str().unwrap(),
+                    );
+
+                    entry = ffmpeg_sys::av_dict_get(
+                        options,
+                        null_str.as_ptr(),
+                        entry,
+                        ffmpeg_sys::AV_DICT_IGNORE_SUFFIX,
+                    );
+                }
+
+                panic!("Error: Failed setting some codec options");
             }
 
             /*
